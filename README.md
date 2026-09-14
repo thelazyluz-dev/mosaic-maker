@@ -39,3 +39,22 @@ printable area, so the sheet always fits.
 - gallery of ready-made sheets
 - English + more languages
 - batch mode: a folder of images in, PDFs out
+
+## Contour mode
+
+Choose **קווי מתאר** for freeform paint-by-number areas, or **רשת משבצות**
+for the original mosaic. Contour mode samples at a higher resolution, merges
+small connected areas into adjacent colors, traces closed boundaries (including
+holes), and places one number inside each area. The detail slider and color
+count control complexity. Both the outline sheet and colored solution use the
+same region paths. Half-cell and grid-outline controls apply only to grid mode.
+Very narrow regions can still require small numbers; the UI flags this for print.
+
+### Verify contour geometry
+
+```bash
+npm run typecheck
+npm run build
+./node_modules/.bin/esbuild tests/contours.test.ts --bundle --platform=node --outfile=/tmp/mosaic-contours-test.cjs
+node /tmp/mosaic-contours-test.cjs
+```
