@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
 import { capShades, snapToNamed } from './lib/palette';
 import { splitEdges } from './lib/halfcells';
@@ -42,11 +42,21 @@ export default function App() {
     denoise: true,
     boost: true,
   });
-  const [mode, setMode] = useState<'grid' | 'contours'>('grid');
-  const modeRef = useRef<'grid' | 'contours'>('grid');
+  const [mode, setMode] = useState<'grid' | 'contours'>('contours');
+  const modeRef = useRef<'grid' | 'contours'>('contours');
   const [contour, setContour] = useState<ContourMosaic | null>(null);
   const generationRef = useRef(0);
-  const [withSolution, setWithSolution] = useState(true);
+  const [view, setView] = useState<'puzzle' | 'compare' | 'solution'>('compare');
+  const [compare, setCompare] = useState(50);
+  const [zoom, setZoom] = useState(1);
+  const pendingRef = useRef<number>();
+  const uploadRef = useRef(0);
+  const objectUrlRef = useRef<string>();
+
+  useEffect(() => () => {
+    window.clearTimeout(pendingRef.current);
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+  }, []);
   const [mosaic, setMosaic] = useState<Mosaic | null>(null);
 
   // max shades per colour family (0 = no limit). Kept in a ref so the stable
@@ -75,6 +85,7 @@ export default function App() {
 
   const generate = useCallback(
     (o: MosaicOptions) => {
+      window.clearTimeout(pendingRef.current);
       const img = imageRef.current;
       if (!img) return;
       const request = ++generationRef.current;
@@ -123,15 +134,23 @@ export default function App() {
       say('הקובץ אינו תמונה. בחר JPG, PNG או WEBP.', true);
       return;
     }
+    const upload = ++uploadRef.current;
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
+      if (upload !== uploadRef.current) { URL.revokeObjectURL(url); return; }
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = url;
+      setZoom(1);
       imageRef.current = img;
       setThumb(url);
       setFileName(`${file.name} — ${img.naturalWidth}×${img.naturalHeight}`);
       generate(opts);
     };
-    img.onerror = () => say('לא הצלחתי לפתוח את התמונה. נסה קובץ אחר.', true);
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      if (upload === uploadRef.current) say('לא הצלחתי לפתוח את התמונה. נסה קובץ אחר.', true);
+    };
     img.src = url;
   };
 
@@ -159,301 +178,73 @@ export default function App() {
   const activePreset = PRESETS.find((p) => p.cols === opts.cols && p.colors === opts.colors);
   const hasImage = Boolean(thumb);
 
+  const changeOptions = (next: MosaicOptions) => {
+    setOpts(next);
+    window.clearTimeout(pendingRef.current);
+    pendingRef.current = window.setTimeout(() => generate(next), 300);
+  };
+
   return (
     <div className="wrap">
-      <header>
-        <div className="pencils" aria-hidden="true">
-          {['#D92B2B', '#F2B705', '#2E9E4F', '#3B5BDB', '#8B4FC4', '#8A5A2B'].map((c) => (
-            <i key={c} style={{ background: c }} />
-          ))}
-        </div>
-        <h1>מוזאיקת מספרים</h1>
-        <p>
-          העלו תמונה וקבלו דף צביעה לפי מספרים מוכן להדפסה — רשת משבצות או אזורים בקווי מתאר, מקרא צבעים ודף פתרון.
-          הכול רץ בדפדפן, שום קובץ לא נשלח לשרת.
-        </p>
-      </header>
-
-      <div className="panel">
-        <div
-          className={`drop${hot ? ' hot' : ''}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => fileRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              fileRef.current?.click();
-            }
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setHot(true);
-          }}
-          onDragLeave={() => setHot(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setHot(false);
-            const f = e.dataTransfer.files?.[0];
-            if (f) loadFile(f);
-          }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) loadFile(f);
-            }}
-          />
-          {thumb ? (
-            <>
-              <img className="thumb" src={thumb} alt="" />
-              <span>
-                <strong>{fileName}</strong>
-                <br />
-                לחצו להחלפה
-              </span>
-            </>
-          ) : (
-            <span>
-              בחרו תמונה או גררו לכאן
-              <br />
-              <strong>JPG, PNG, WEBP</strong>
-            </span>
-          )}
-        </div>
-
-        <div className="presets" role="group" aria-label="סגנון דף הצביעה">
-          {(['grid', 'contours'] as const).map(value => (
-            <button type="button" className="chip" key={value} aria-pressed={mode === value}
-              onClick={() => {
-                modeRef.current = value;
-                setMode(value);
-                setMosaic(null);
-                setContour(null);
-                generate(opts);
-              }}>
-              {value === 'grid' ? 'רשת משבצות' : 'קווי מתאר'}
-            </button>
-          ))}
-        </div>
-        <p className="note">{mode === 'contours'
-          ? 'אזורי צבע חופשיים עם מספר בכל אזור. יותר פירוט שומר על פרטים קטנים; פחות פירוט מקל על הצביעה.'
-          : 'מוזאיקה עם מספר בכל משבצת.'}</p>
-
-        <div className="reco">
-          <button type="button" className="btn reco-btn" disabled={!hasImage} onClick={recommend}>
-            ✨ המלצת הגדרות
+      <header className="brand-bar"><a className="brand" href="./"><span className="brand-mark" aria-hidden="true">✦</span> מוזאיקת מספרים</a><span className="privacy">התמונה נשארת במכשיר שלך</span></header>
+      <div className="intro"><span className="eyebrow">סטודיו לצביעה אישית</span><h1>התמונה שלך.<br /><span>רגע של צבע.</span></h1><p>בחרו תמונה, התאימו את הסגנון והדפיסו יצירה משלכם.</p></div>
+      <main className="studio">
+        <aside className="panel" aria-label="הגדרות דף הצביעה">
+          <div className="section-heading"><span className="step">1</span><h2>מתחילים בתמונה</h2></div>
+          <button type="button" className={`drop${hot ? ' hot' : ''}`} onClick={() => fileRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setHot(true); }} onDragLeave={() => setHot(false)}
+            onDrop={e => { e.preventDefault(); setHot(false); const file = e.dataTransfer.files[0]; if (file) loadFile(file); }}>
+            {thumb ? <><img className="thumb" src={thumb} alt="התמונה שבחרת" /><span><strong>החלפת תמונה</strong><small>{fileName}</small></span></> : <><span className="upload-symbol" aria-hidden="true">+</span><strong>בחירת תמונה</strong><small>או גררו לכאן · JPG, PNG, WEBP</small></>}
           </button>
-          {recTip && <span className="reco-tip">{recTip}</span>}
-        </div>
-
-        <div className="presets" role="group" aria-label="רמת קושי">
-          {PRESETS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              className="chip"
-              aria-pressed={activePreset === p}
-              onClick={() => applyPreset(p)}
-            >
-              {mode === 'contours' ? p.label.split(' · ')[0] : p.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="rows">
-          <div className="row">
-            <label htmlFor="cols">
-              {mode === 'contours' ? 'רמת פירוט:' : 'רוחב הרשת:'} <span className="val">{opts.cols}</span> {mode === 'grid' ? 'משבצות' : ''}
-            </label>
-            <input
-              id="cols"
-              type="range"
-              min={12}
-              max={90}
-              value={opts.cols}
-              onChange={(e) => setOpts({ ...opts, cols: Number(e.target.value) })}
-              onMouseUp={() => generate(opts)}
-              onTouchEnd={() => generate(opts)}
-            />
+          <input className="file-input" ref={fileRef} type="file" accept="image/*" onChange={e => { const file = e.target.files?.[0]; if (file) loadFile(file); e.target.value = ''; }} />
+          <div className="section-heading"><span className="step">2</span><h2>נותנים לה סגנון</h2></div>
+          <div className="segmented" role="group" aria-label="סגנון דף הצביעה">
+            {(['contours', 'grid'] as const).map(value => <button type="button" key={value} aria-pressed={mode === value} onClick={() => {
+              modeRef.current = value; setMode(value); setMosaic(null); setContour(null); generate(opts);
+            }}>{value === 'contours' ? 'קווי מתאר' : 'רשת משבצות'}</button>)}
           </div>
-
-          <div className="row">
-            <label htmlFor="colors">
-              מספר צבעים: <span className="val">{opts.colors}</span>
-            </label>
-            <input
-              id="colors"
-              type="range"
-              min={3}
-              max={24}
-              value={opts.colors}
-              onChange={(e) => setOpts({ ...opts, colors: Number(e.target.value) })}
-              onMouseUp={() => generate(opts)}
-              onTouchEnd={() => generate(opts)}
-            />
+          <p className="help">{mode === 'contours' ? 'אזורי צבע חופשיים עם מספר בכל אזור.' : 'מוזאיקה עם מספר בכל משבצת.'}</p>
+          <label className="field-title">רמת פירוט</label>
+          <div className="presets" role="group" aria-label="רמת פירוט">
+            {PRESETS.map((p, i) => <button type="button" className="chip" key={p.label} aria-pressed={activePreset === p} onClick={() => applyPreset(p)}>{['קליל', 'נוח', 'מאוזן', 'עשיר', 'מפורט'][i]}</button>)}
           </div>
-
-          <div className="row">
-            <label htmlFor="shades">
-              גווני צבע לכל משפחה:{' '}
-              <span className="val">{maxShades ? `עד ${maxShades}` : 'ללא הגבלה'}</span>
-            </label>
-            <select
-              id="shades"
-              className="select"
-              value={maxShades}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                maxShadesRef.current = v;
-                setMaxShades(v);
-                generate(opts);
-              }}
-            >
-              <option value={0}>ללא הגבלה</option>
-              <option value={2}>עד 2 גוונים</option>
-              <option value={3}>עד 3 גוונים</option>
-              <option value={4}>עד 4 גוונים</option>
-            </select>
+          <div className="field"><label htmlFor="colors">מספר צבעים <output>{opts.colors}</output></label><input id="colors" type="range" min={3} max={24} value={opts.colors} onChange={e => changeOptions({ ...opts, colors: Number(e.target.value) })} /></div>
+          <button type="button" className="btn subtle" disabled={!hasImage || busy} onClick={recommend}>✦ התאמת הגדרות לתמונה</button>
+          {recTip && <p className="help">{recTip}</p>}
+          <details className="advanced"><summary>הגדרות מתקדמות</summary>
+            <div className="field"><label htmlFor="cols">{mode === 'contours' ? 'דיוק הפרטים' : 'רוחב הרשת'} <output>{opts.cols}</output></label><input id="cols" type="range" min={12} max={90} value={opts.cols} onChange={e => changeOptions({ ...opts, cols: Number(e.target.value) })} /></div>
+            <div className="field"><label htmlFor="shades">גוונים לכל משפחת צבע</label><select id="shades" value={maxShades} onChange={e => { const v = Number(e.target.value); maxShadesRef.current = v; setMaxShades(v); generate(opts); }}><option value={0}>ללא הגבלה</option>{[2,3,4].map(n => <option key={n} value={n}>עד {n} גוונים</option>)}</select></div>
+            <div className="checks">
+              <label><input type="checkbox" checked={opts.denoise} onChange={e => { const next = { ...opts, denoise: e.target.checked }; setOpts(next); generate(next); }} />{mode === 'contours' ? 'איחוד אזורים קטנים' : 'ניקוי משבצות בודדות'}</label>
+              <label><input type="checkbox" checked={opts.boost} onChange={e => { const next = { ...opts, boost: e.target.checked }; setOpts(next); generate(next); }} />חיזוק צבעים</label>
+              <label><input type="checkbox" checked={namedPalette} onChange={e => { namedPaletteRef.current = e.target.checked; setNamedPalette(e.target.checked); generate(opts); }} />התאמה לצבעי עפרונות</label>
+              {mode === 'grid' && <><label><input type="checkbox" checked={smoothEdges} onChange={e => { smoothEdgesRef.current = e.target.checked; setSmoothEdges(e.target.checked); generate(opts); }} />חצאי משבצות בקצוות</label><label><input type="checkbox" checked={outlines} onChange={e => setOutlines(e.target.checked)} />הדגשת גבולות בין צבעים</label></>}
+            </div>
+          </details>
+          <button type="button" className="btn regenerate" disabled={!hasImage || busy} onClick={() => generate(opts)}>{busy ? 'יוצרים את דף הצביעה…' : 'יצירה מחדש'}</button>
+        </aside>
+        <section className="workspace" aria-label="תצוגה מקדימה" aria-busy={busy}>
+          <div className="preview-toolbar"><div><span className="eyebrow">היצירה שלך</span><h2>מוכנים להוסיף צבע?</h2></div>
+            {mosaic && <div className="segmented view-tabs" role="group" aria-label="תצוגה">{(['puzzle','compare','solution'] as const).map((v,i) => <button type="button" key={v} aria-pressed={view===v} onClick={() => setView(v)}>{['דף צביעה','השוואה','צבעוני'][i]}</button>)}</div>}
           </div>
-
-          <div className="checks">
-            <label>
-              <input
-                type="checkbox"
-                checked={opts.denoise}
-                onChange={(e) => {
-                  const next = { ...opts, denoise: e.target.checked };
-                  setOpts(next);
-                  generate(next);
-                }}
-              />
-              {mode === 'contours' ? 'איחוד אזורים קטנים' : 'ניקוי משבצות בודדות'}
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={opts.boost}
-                onChange={(e) => {
-                  const next = { ...opts, boost: e.target.checked };
-                  setOpts(next);
-                  generate(next);
-                }}
-              />
-              חיזוק צבעים
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={namedPalette}
-                onChange={(e) => {
-                  namedPaletteRef.current = e.target.checked;
-                  setNamedPalette(e.target.checked);
-                  generate(opts);
-                }}
-              />
-              צבעים עם שם (ערכת עפרונות)
-            </label>
-            {mode === 'grid' && <label>
-              <input
-                type="checkbox"
-                checked={smoothEdges}
-                onChange={(e) => {
-                  smoothEdgesRef.current = e.target.checked;
-                  setSmoothEdges(e.target.checked);
-                  generate(opts);
-                }}
-              />
-              קצוות חלקים (חצאי משבצות)
-            </label>}
-            {mode === 'grid' && <label>
-              <input
-                type="checkbox"
-                checked={outlines}
-                onChange={(e) => setOutlines(e.target.checked)}
-              />
-              הדגשת גבולות בין צבעים
-            </label>}
-            <label>
-              <input
-                type="checkbox"
-                checked={withSolution}
-                onChange={(e) => setWithSolution(e.target.checked)}
-              />
-              דף פתרון
-            </label>
-          </div>
-        </div>
-
-        <div className="actions">
-          <button
-            type="button"
-            className="btn"
-            disabled={!hasImage || busy}
-            onClick={() => generate(opts)}
-          >
-            {busy ? 'מחשב…' : 'צור דף'}
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={!mosaic}
-            onClick={() => window.print()}
-          >
-            הדפסה / שמירה כ‑PDF
-          </button>
-        </div>
-
-        <p className={warn ? 'note warn' : 'note'}>{note}</p>
-      </div>
-
-      {mosaic && rendered && (
-        <>
-          {/* page orientation follows the image: wide → landscape, tall → portrait */}
-          <style>{`@page { size: A4 ${mosaic.cols > mosaic.rows ? 'landscape' : 'portrait'}; margin: 9mm; }`}</style>
-          <Sheet
-            title={contour ? "דף צביעה — צבעו כל אזור לפי המספר" : "דף צביעה — צבעו כל משבצת לפי המספר"}
-            svg={rendered.puzzle}
-            mosaic={mosaic}
-          />
-          {withSolution && (
-            <Sheet title="פתרון (לתצוגה — לא מודפס)" svg={rendered.solution} className="solution" />
-          )}
-        </>
-      )}
+          {mosaic && rendered ? <>
+            <div className="canvas-desk"><div className="preview-scroll"><div className="preview-paper" style={{width: `${zoom * 100}%`}}>
+              <div className="mosaic" dangerouslySetInnerHTML={{__html: view === 'solution' ? rendered.solution : rendered.puzzle}} />
+              {view === 'compare' && <><div className="comparison-overlay mosaic" style={{clipPath: `inset(0 ${100-compare}% 0 0)`}} dangerouslySetInnerHTML={{__html: rendered.solution}} /><div className="comparison-line" style={{left: `${compare}%`}}><span aria-hidden="true">↔</span></div></>}
+            </div></div></div>
+            <div className="preview-controls">{view === 'compare' && <div className="comparison-control"><label htmlFor="compare">צבעוני מול דף צביעה</label><input id="compare" type="range" min={0} max={100} value={compare} dir="ltr" onChange={e => setCompare(Number(e.target.value))} /></div>}<div className="zoom-control"><button type="button" aria-label="הקטנה" disabled={zoom===1} onClick={() => setZoom(Math.max(1,zoom-.5))}>−</button><output>{zoom*100}%</output><button type="button" aria-label="הגדלה" disabled={zoom===3} onClick={() => setZoom(Math.min(3,zoom+.5))}>+</button></div></div>
+            <div className="palette-block"><h3>הצבעים שלך <span>{mosaic.palette.length} גוונים</span></h3><Legend mosaic={mosaic} /></div>
+          </> : <div className="empty-state"><div className="empty-art" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span></div><h3>{busy ? 'היצירה שלך בדרך…' : 'כאן התמונה הופכת ליצירה'}</h3><p>בחרו תמונה כדי לראות את דף הצביעה ואת הפתרון הצבעוני.</p><button type="button" className="btn" onClick={() => fileRef.current?.click()}>בחירת תמונה</button></div>}
+          <p className={warn ? 'note warn' : 'note'} role="status">{busy ? 'מעבדים את התמונה…' : note}</p>
+          <div className="print-bar"><span>דף צביעה + מקרא צבעים<small>התצוגה הצבעונית היא לעזרה בלבד</small></span><button type="button" className="btn" disabled={!mosaic || busy} onClick={() => window.print()}>הדפסה / שמירה כ־PDF</button></div>
+        </section>
+      </main>
+      <footer>יוצרים במכשיר שלך. בלי הרשמה, בלי העלאת תמונות לשרת.</footer>
+      {mosaic && rendered && <section className="print-sheet"><style>{`@page { size: A4 ${mosaic.cols > mosaic.rows ? 'landscape' : 'portrait'}; margin: 9mm; }`}</style><h2>{contour ? 'צבעו כל אזור לפי המספר' : 'צבעו כל משבצת לפי המספר'}</h2><div className="mosaic" dangerouslySetInnerHTML={{__html:rendered.puzzle}} /><Legend mosaic={mosaic} /></section>}
     </div>
   );
 }
 
-function Sheet({
-  title,
-  svg,
-  mosaic,
-  className = '',
-}: {
-  title: string;
-  svg: string;
-  mosaic?: Mosaic;
-  className?: string;
-}) {
-  return (
-    <section className={`sheet ${className}`.trim()}>
-      <h2>{title}</h2>
-      <div className="mosaic" dangerouslySetInnerHTML={{ __html: svg }} />
-      {mosaic && (
-        <div className="legend">
-          {mosaic.palette.map((c, i) => (
-            <span className="key" key={i}>
-              <b>{i + 1}</b>
-              <i style={{ background: hex(c) }} />
-              {colorName(c)}
-            </span>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+function Legend({mosaic}: {mosaic: Mosaic}) {
+  return <div className="legend">{mosaic.palette.map((c,i) => <span className="key" key={i}><b>{i+1}</b><i style={{background:hex(c)}} />{colorName(c)}</span>)}</div>;
 }
