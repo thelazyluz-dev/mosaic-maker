@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
+import { capShades } from './lib/palette';
 import { colorName, hex, puzzleSvg, solutionSvg } from './lib/render';
 
 interface Preset {
@@ -40,6 +41,11 @@ export default function App() {
   const [withSolution, setWithSolution] = useState(true);
   const [mosaic, setMosaic] = useState<Mosaic | null>(null);
 
+  // max shades per colour family (0 = no limit). Kept in a ref so the stable
+  // generate() callback always reads the current value.
+  const [maxShades, setMaxShades] = useState(3);
+  const maxShadesRef = useRef(3);
+
   const say = (text: string, isWarning = false) => {
     setNote(text);
     setWarn(isWarning);
@@ -53,7 +59,8 @@ export default function App() {
       // let the button state paint before the synchronous work starts
       window.setTimeout(() => {
         try {
-          const m = buildMosaic(img, o);
+          const built = buildMosaic(img, o);
+          const m = maxShadesRef.current ? capShades(built, maxShadesRef.current) : built;
           setMosaic(m);
           if (m.cellMm < 3.2) {
             say(
@@ -212,6 +219,29 @@ export default function App() {
               onMouseUp={() => generate(opts)}
               onTouchEnd={() => generate(opts)}
             />
+          </div>
+
+          <div className="row">
+            <label htmlFor="shades">
+              גווני צבע לכל משפחה:{' '}
+              <span className="val">{maxShades ? `עד ${maxShades}` : 'ללא הגבלה'}</span>
+            </label>
+            <select
+              id="shades"
+              className="select"
+              value={maxShades}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                maxShadesRef.current = v;
+                setMaxShades(v);
+                generate(opts);
+              }}
+            >
+              <option value={0}>ללא הגבלה</option>
+              <option value={2}>עד 2 גוונים</option>
+              <option value={3}>עד 3 גוונים</option>
+              <option value={4}>עד 4 גוונים</option>
+            </select>
           </div>
 
           <div className="checks">

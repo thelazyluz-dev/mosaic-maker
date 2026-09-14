@@ -179,6 +179,23 @@ input[type='checkbox'] {
   accent-color: var(--blue);
 }
 
+.select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.select:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
 .actions {
   display: flex;
   gap: 10px;
