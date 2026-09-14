@@ -1,9 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
 import { capShades, snapToNamed } from './lib/palette';
 import { splitEdges } from './lib/halfcells';
 import { recommendSettings, applyRecommendation } from './lib/recommend';
 import { colorName, hex, puzzleSvg, solutionSvg } from './lib/render';
+
+import { buildContours, contourSvg, type ContourMosaic } from './lib/contours';
 
 interface Preset {
   label: string;
@@ -40,6 +42,10 @@ export default function App() {
     denoise: true,
     boost: true,
   });
+  const [mode, setMode] = useState<'grid' | 'contours'>('grid');
+  const modeRef = useRef<'grid' | 'contours'>('grid');
+  const [contour, setContour] = useState<ContourMosaic | null>(null);
+  const generationRef = useRef(0);
   const [withSolution, setWithSolution] = useState(true);
   const [mosaic, setMosaic] = useState<Mosaic | null>(null);
 
@@ -71,13 +77,25 @@ export default function App() {
     (o: MosaicOptions) => {
       const img = imageRef.current;
       if (!img) return;
+      const request = ++generationRef.current;
+      const selectedMode = modeRef.current;
       setBusy(true);
       // let the button state paint before the synchronous work starts
       window.setTimeout(() => {
+        if (request !== generationRef.current) return;
         try {
-          const built = buildMosaic(img, o);
+          const built = buildMosaic(img, selectedMode === 'contours' ? { ...o, cols: 120 + o.cols * 2 } : o);
           const capped = maxShadesRef.current ? capShades(built, maxShadesRef.current) : built;
           const named = namedPaletteRef.current ? snapToNamed(capped) : capped;
+          if (selectedMode === 'contours') {
+            const result = buildContours(named, o.denoise);
+            setContour(result);
+            setMosaic(result);
+            const small = result.regions.filter(r => r.fontSize * result.cellMm < 1.5).length;
+            say(`${result.regions.length} אזורי צביעה, ${result.palette.length} צבעים.${small ? ' חלק מהאזורים קטנים — להדפסה נוחה הפחיתו פירוט או צבעים.' : ''}`, small > 0);
+            return;
+          }
+          setContour(null);
           const m = smoothEdgesRef.current ? splitEdges(named, img, o.boost) : named;
           setMosaic(m);
           if (m.cellMm < 3.2) {
@@ -133,6 +151,11 @@ export default function App() {
     generate(next);
   };
 
+  const rendered = useMemo(() => mosaic ? {
+    puzzle: contour ? contourSvg(contour) : puzzleSvg(mosaic, { outlines }),
+    solution: contour ? contourSvg(contour, true) : solutionSvg(mosaic),
+  } : null, [mosaic, contour, outlines]);
+
   const activePreset = PRESETS.find((p) => p.cols === opts.cols && p.colors === opts.colors);
   const hasImage = Boolean(thumb);
 
@@ -146,7 +169,7 @@ export default function App() {
         </div>
         <h1>מוזאיקת מספרים</h1>
         <p>
-          העלו תמונה וקבלו דף צביעה לפי מספרים מוכן להדפסה — רשת ממוספרת, מקרא צבעים ודף פתרון.
+          העלו תמונה וקבלו דף צביעה לפי מספרים מוכן להדפסה — רשת משבצות או אזורים בקווי מתאר, מקרא צבעים ודף פתרון.
           הכול רץ בדפדפן, שום קובץ לא נשלח לשרת.
         </p>
       </header>
@@ -202,6 +225,24 @@ export default function App() {
           )}
         </div>
 
+        <div className="presets" role="group" aria-label="סגנון דף הצביעה">
+          {(['grid', 'contours'] as const).map(value => (
+            <button type="button" className="chip" key={value} aria-pressed={mode === value}
+              onClick={() => {
+                modeRef.current = value;
+                setMode(value);
+                setMosaic(null);
+                setContour(null);
+                generate(opts);
+              }}>
+              {value === 'grid' ? 'רשת משבצות' : 'קווי מתאר'}
+            </button>
+          ))}
+        </div>
+        <p className="note">{mode === 'contours'
+          ? 'אזורי צבע חופשיים עם מספר בכל אזור. יותר פירוט שומר על פרטים קטנים; פחות פירוט מקל על הצביעה.'
+          : 'מוזאיקה עם מספר בכל משבצת.'}</p>
+
         <div className="reco">
           <button type="button" className="btn reco-btn" disabled={!hasImage} onClick={recommend}>
             ✨ המלצת הגדרות
@@ -218,7 +259,7 @@ export default function App() {
               aria-pressed={activePreset === p}
               onClick={() => applyPreset(p)}
             >
-              {p.label}
+              {mode === 'contours' ? p.label.split(' · ')[0] : p.label}
             </button>
           ))}
         </div>
@@ -226,7 +267,7 @@ export default function App() {
         <div className="rows">
           <div className="row">
             <label htmlFor="cols">
-              רוחב הרשת: <span className="val">{opts.cols}</span> משבצות
+              {mode === 'contours' ? 'רמת פירוט:' : 'רוחב הרשת:'} <span className="val">{opts.cols}</span> {mode === 'grid' ? 'משבצות' : ''}
             </label>
             <input
               id="cols"
@@ -290,7 +331,7 @@ export default function App() {
                   generate(next);
                 }}
               />
-              ניקוי משבצות בודדות
+              {mode === 'contours' ? 'איחוד אזורים קטנים' : 'ניקוי משבצות בודדות'}
             </label>
             <label>
               <input
@@ -316,7 +357,7 @@ export default function App() {
               />
               צבעים עם שם (ערכת עפרונות)
             </label>
-            <label>
+            {mode === 'grid' && <label>
               <input
                 type="checkbox"
                 checked={smoothEdges}
@@ -327,15 +368,15 @@ export default function App() {
                 }}
               />
               קצוות חלקים (חצאי משבצות)
-            </label>
-            <label>
+            </label>}
+            {mode === 'grid' && <label>
               <input
                 type="checkbox"
                 checked={outlines}
                 onChange={(e) => setOutlines(e.target.checked)}
               />
-              קווי מתאר לאזורים
-            </label>
+              הדגשת גבולות בין צבעים
+            </label>}
             <label>
               <input
                 type="checkbox"
@@ -369,17 +410,17 @@ export default function App() {
         <p className={warn ? 'note warn' : 'note'}>{note}</p>
       </div>
 
-      {mosaic && (
+      {mosaic && rendered && (
         <>
           {/* page orientation follows the image: wide → landscape, tall → portrait */}
           <style>{`@page { size: A4 ${mosaic.cols > mosaic.rows ? 'landscape' : 'portrait'}; margin: 9mm; }`}</style>
           <Sheet
-            title="דף צביעה — צבעו כל משבצת לפי המספר"
-            svg={puzzleSvg(mosaic, { outlines })}
+            title={contour ? "דף צביעה — צבעו כל אזור לפי המספר" : "דף צביעה — צבעו כל משבצת לפי המספר"}
+            svg={rendered.puzzle}
             mosaic={mosaic}
           />
           {withSolution && (
-            <Sheet title="פתרון (לתצוגה — לא מודפס)" svg={solutionSvg(mosaic)} className="solution" />
+            <Sheet title="פתרון (לתצוגה — לא מודפס)" svg={rendered.solution} className="solution" />
           )}
         </>
       )}
