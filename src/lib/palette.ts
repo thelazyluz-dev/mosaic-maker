@@ -128,3 +128,78 @@ export function capShades(m: Mosaic, maxPerFamily: number): Mosaic {
 
   return { ...m, palette, grid };
 }
+
+// A fixed set of standard, nameable colours — roughly a colored-pencil box.
+// Snapping to it guarantees every colour on the sheet is one a person can
+// actually pick, and gives the legend an exact Hebrew name.
+export const NAMED_COLORS: Array<{ name: string; rgb: RGB }> = [
+  { name: 'לבן', rgb: [255, 255, 255] },
+  { name: 'שחור', rgb: [20, 20, 20] },
+  { name: 'אפור', rgb: [140, 140, 140] },
+  { name: 'אפור בהיר', rgb: [205, 205, 205] },
+  { name: 'אדום', rgb: [215, 35, 35] },
+  { name: 'בורדו', rgb: [130, 25, 45] },
+  { name: 'ורוד', rgb: [244, 150, 180] },
+  { name: 'כתום', rgb: [242, 140, 35] },
+  { name: 'צהוב', rgb: [248, 220, 55] },
+  { name: 'חרדל', rgb: [205, 170, 60] },
+  { name: 'חום', rgb: [125, 80, 45] },
+  { name: 'חום בהיר', rgb: [178, 128, 90] },
+  { name: 'שזוף', rgb: [216, 172, 132] },
+  { name: "בז'", rgb: [232, 210, 175] },
+  { name: 'ירוק', rgb: [45, 155, 70] },
+  { name: 'ירוק כהה', rgb: [25, 90, 50] },
+  { name: 'ירוק בהיר', rgb: [155, 210, 100] },
+  { name: 'טורקיז', rgb: [45, 185, 180] },
+  { name: 'כחול', rgb: [45, 90, 200] },
+  { name: 'כחול כהה', rgb: [25, 45, 110] },
+  { name: 'תכלת', rgb: [130, 195, 235] },
+  { name: 'סגול', rgb: [130, 60, 175] },
+  { name: 'לילך', rgb: [185, 160, 215] },
+];
+
+/**
+ * Snap every palette colour to the nearest standard named colour, merging
+ * duplicates. The result uses only real, nameable colours; the legend then
+ * shows each one's exact Hebrew name. mosaic.ts is not involved.
+ */
+export function snapToNamed(m: Mosaic): Mosaic {
+  if (!m.palette.length) return m;
+  const named = NAMED_COLORS.map((c) => c.rgb);
+
+  const repOf: RGB[] = m.palette.map((c) => {
+    let bi = 0;
+    let bd = Infinity;
+    for (let j = 0; j < named.length; j++) {
+      const p = named[j];
+      const dr = c[0] - p[0];
+      const dg = c[1] - p[1];
+      const db = c[2] - p[2];
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bd) {
+        bd = d;
+        bi = j;
+      }
+    }
+    return named[bi];
+  });
+
+  const refToIdx = new Map<RGB, number>();
+  const uniq: RGB[] = [];
+  for (const rep of repOf) {
+    if (!refToIdx.has(rep)) {
+      refToIdx.set(rep, uniq.length);
+      uniq.push(rep);
+    }
+  }
+  const order = uniq.map((_, i) => i).sort((a, b) => luma(uniq[b]) - luma(uniq[a]));
+  const palette = order.map((o) => uniq[o]);
+  const uniqToNew = new Map<number, number>();
+  order.forEach((o, n) => uniqToNew.set(o, n));
+
+  const grid = new Int32Array(m.grid.length);
+  for (let i = 0; i < m.grid.length; i++) {
+    grid[i] = uniqToNew.get(refToIdx.get(repOf[m.grid[i]])!)!;
+  }
+  return { ...m, palette, grid };
+}

@@ -1,6 +1,7 @@
 import type { Mosaic, RGB } from './mosaic';
 import type { Split, SplitType } from './halfcells';
 import { regionData } from './regions';
+import { NAMED_COLORS } from './palette';
 
 type RenderMosaic = Mosaic & { splits?: (Split | null)[] };
 
@@ -37,35 +38,11 @@ export function hex(c: RGB): string {
   );
 }
 
-const NAMES: Array<[string, number, number, number]> = [
-  ['לבן', 255, 255, 255],
-  ['שחור', 20, 20, 20],
-  ['אפור', 140, 140, 140],
-  ['אפור בהיר', 205, 205, 205],
-  ['אדום', 215, 35, 35],
-  ['בורדו', 130, 25, 45],
-  ['ורוד', 244, 150, 180],
-  ['כתום', 242, 140, 35],
-  ['צהוב', 248, 220, 55],
-  ['חרדל', 205, 170, 60],
-  ['חום', 125, 80, 45],
-  ["בז'", 232, 210, 175],
-  ['ירוק', 45, 155, 70],
-  ['ירוק כהה', 25, 90, 50],
-  ['ירוק בהיר', 155, 210, 100],
-  ['טורקיז', 45, 185, 180],
-  ['כחול', 45, 90, 200],
-  ['כחול כהה', 25, 45, 110],
-  ['תכלת', 130, 195, 235],
-  ['סגול', 130, 60, 175],
-  ['לילך', 185, 160, 215],
-];
-
 export function colorName(c: RGB): string {
-  let best = NAMES[0][0];
+  let best = NAMED_COLORS[0].name;
   let bd = Infinity;
-  for (const [name, r, g, b] of NAMES) {
-    const d = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2;
+  for (const { name, rgb } of NAMED_COLORS) {
+    const d = (c[0] - rgb[0]) ** 2 + (c[1] - rgb[1]) ** 2 + (c[2] - rgb[2]) ** 2;
     if (d < bd) {
       bd = d;
       best = name;

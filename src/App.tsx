@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
-import { capShades } from './lib/palette';
+import { capShades, snapToNamed } from './lib/palette';
 import { splitEdges } from './lib/halfcells';
 import { colorName, hex, puzzleSvg, solutionSvg } from './lib/render';
 
@@ -47,6 +47,10 @@ export default function App() {
   const [maxShades, setMaxShades] = useState(3);
   const maxShadesRef = useRef(3);
 
+  // snap colours to a standard, nameable pencil-box palette (off by default)
+  const [namedPalette, setNamedPalette] = useState(false);
+  const namedPaletteRef = useRef(false);
+
   // split edge cells into two triangles for smoother contours (off by default)
   const [smoothEdges, setSmoothEdges] = useState(false);
   const smoothEdgesRef = useRef(false);
@@ -70,7 +74,8 @@ export default function App() {
         try {
           const built = buildMosaic(img, o);
           const capped = maxShadesRef.current ? capShades(built, maxShadesRef.current) : built;
-          const m = smoothEdgesRef.current ? splitEdges(capped, img, o.boost) : capped;
+          const named = namedPaletteRef.current ? snapToNamed(capped) : capped;
+          const m = smoothEdgesRef.current ? splitEdges(named, img, o.boost) : named;
           setMosaic(m);
           if (m.cellMm < 3.2) {
             say(
@@ -278,6 +283,18 @@ export default function App() {
                 }}
               />
               חיזוק צבעים
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={namedPalette}
+                onChange={(e) => {
+                  namedPaletteRef.current = e.target.checked;
+                  setNamedPalette(e.target.checked);
+                  generate(opts);
+                }}
+              />
+              צבעים עם שם (ערכת עפרונות)
             </label>
             <label>
               <input
