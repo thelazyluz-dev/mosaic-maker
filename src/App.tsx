@@ -371,21 +371,35 @@ export default function App() {
 
       {mosaic && (
         <>
+          {/* page orientation follows the image: wide → landscape, tall → portrait */}
+          <style>{`@page { size: A4 ${mosaic.cols > mosaic.rows ? 'landscape' : 'portrait'}; margin: 9mm; }`}</style>
           <Sheet
             title="דף צביעה — צבעו כל משבצת לפי המספר"
             svg={puzzleSvg(mosaic, { outlines })}
             mosaic={mosaic}
           />
-          {withSolution && <Sheet title="פתרון" svg={solutionSvg(mosaic)} />}
+          {withSolution && (
+            <Sheet title="פתרון (לתצוגה — לא מודפס)" svg={solutionSvg(mosaic)} className="solution" />
+          )}
         </>
       )}
     </div>
   );
 }
 
-function Sheet({ title, svg, mosaic }: { title: string; svg: string; mosaic?: Mosaic }) {
+function Sheet({
+  title,
+  svg,
+  mosaic,
+  className = '',
+}: {
+  title: string;
+  svg: string;
+  mosaic?: Mosaic;
+  className?: string;
+}) {
   return (
-    <section className="sheet">
+    <section className={`sheet ${className}`.trim()}>
       <h2>{title}</h2>
       <div className="mosaic" dangerouslySetInnerHTML={{ __html: svg }} />
       {mosaic && (

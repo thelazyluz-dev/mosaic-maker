@@ -315,8 +315,8 @@ input[type='checkbox'] {
 }
 
 @media print {
+  /* @page size (orientation) is set dynamically per image from App.tsx */
   @page {
-    size: A4 portrait;
     margin: 9mm;
   }
 
@@ -339,13 +339,11 @@ input[type='checkbox'] {
     border-radius: 0;
     padding: 0;
     margin: 0;
-    break-after: page;
-    page-break-after: always;
   }
 
-  .sheet:last-child {
-    break-after: auto;
-    page-break-after: auto;
+  /* the solution is a screen-only reference — never print it */
+  .sheet.solution {
+    display: none !important;
   }
 
   .sheet h2 {
