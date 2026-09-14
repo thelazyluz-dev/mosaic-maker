@@ -6,6 +6,8 @@ interface Preset {
   label: string;
   cols: number;
   colors: number;
+  /** presets tuned for a faithful picture turn denoise off to keep detail */
+  denoise?: boolean;
 }
 
 const PRESETS: Preset[] = [
@@ -13,6 +15,7 @@ const PRESETS: Preset[] = [
   { label: 'בינוני · 35 עמודות', cols: 35, colors: 9 },
   { label: 'מבוגרים · 50 עמודות', cols: 50, colors: 12 },
   { label: 'מומחה · 70 עמודות', cols: 70, colors: 16 },
+  { label: 'מפורט · הכי נאמן', cols: 90, colors: 24, denoise: false },
 ];
 
 export default function App() {
@@ -23,7 +26,9 @@ export default function App() {
   const [fileName, setFileName] = useState('');
   const [hot, setHot] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState('תמונות עם נושא ברור ורקע פשוט נותנות את התוצאה הטובה ביותר.');
+  const [note, setNote] = useState(
+    'לתמונות של אנשים חתכו קרוב לנושא. לתוצאה נאמנה ופחות "מופשטת" בחרו "מפורט" או הגדילו את מספר הצבעים.',
+  );
   const [warn, setWarn] = useState(false);
 
   const [opts, setOpts] = useState<MosaicOptions>({
@@ -88,7 +93,7 @@ export default function App() {
   };
 
   const applyPreset = (p: Preset) => {
-    const next = { ...opts, cols: p.cols, colors: p.colors };
+    const next = { ...opts, cols: p.cols, colors: p.colors, denoise: p.denoise ?? true };
     setOpts(next);
     if (imageRef.current) generate(next);
   };
@@ -201,7 +206,7 @@ export default function App() {
               id="colors"
               type="range"
               min={3}
-              max={20}
+              max={24}
               value={opts.colors}
               onChange={(e) => setOpts({ ...opts, colors: Number(e.target.value) })}
               onMouseUp={() => generate(opts)}
