@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
 import { capShades } from './lib/palette';
+import { splitEdges } from './lib/halfcells';
 import { colorName, hex, puzzleSvg, solutionSvg } from './lib/render';
 
 interface Preset {
@@ -46,6 +47,10 @@ export default function App() {
   const [maxShades, setMaxShades] = useState(3);
   const maxShadesRef = useRef(3);
 
+  // split edge cells into two triangles for smoother contours (off by default)
+  const [smoothEdges, setSmoothEdges] = useState(false);
+  const smoothEdgesRef = useRef(false);
+
   const say = (text: string, isWarning = false) => {
     setNote(text);
     setWarn(isWarning);
@@ -60,7 +65,8 @@ export default function App() {
       window.setTimeout(() => {
         try {
           const built = buildMosaic(img, o);
-          const m = maxShadesRef.current ? capShades(built, maxShadesRef.current) : built;
+          const capped = maxShadesRef.current ? capShades(built, maxShadesRef.current) : built;
+          const m = smoothEdgesRef.current ? splitEdges(capped, img, o.boost) : capped;
           setMosaic(m);
           if (m.cellMm < 3.2) {
             say(
@@ -268,6 +274,18 @@ export default function App() {
                 }}
               />
               חיזוק צבעים
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={smoothEdges}
+                onChange={(e) => {
+                  smoothEdgesRef.current = e.target.checked;
+                  setSmoothEdges(e.target.checked);
+                  generate(opts);
+                }}
+              />
+              קצוות חלקים (חצאי משבצות)
             </label>
             <label>
               <input
