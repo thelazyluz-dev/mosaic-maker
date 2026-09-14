@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { buildMosaic, type Mosaic, type MosaicOptions } from './lib/mosaic';
 import { capShades, snapToNamed } from './lib/palette';
 import { splitEdges } from './lib/halfcells';
+import { recommendSettings, applyRecommendation } from './lib/recommend';
 import { colorName, hex, puzzleSvg, solutionSvg } from './lib/render';
 
 interface Preset {
@@ -57,6 +58,9 @@ export default function App() {
 
   // puzzle-sheet region outlines — render-only, no recompute needed (off by default)
   const [outlines, setOutlines] = useState(false);
+
+  // one-line explanation of the last "recommend settings" click
+  const [recTip, setRecTip] = useState('');
 
   const say = (text: string, isWarning = false) => {
     setNote(text);
@@ -117,6 +121,16 @@ export default function App() {
     const next = { ...opts, cols: p.cols, colors: p.colors, denoise: p.denoise ?? true };
     setOpts(next);
     if (imageRef.current) generate(next);
+  };
+
+  const recommend = () => {
+    const img = imageRef.current;
+    if (!img) return;
+    const r = recommendSettings(img);
+    const next = applyRecommendation(opts, r);
+    setOpts(next);
+    setRecTip(r.reason);
+    generate(next);
   };
 
   const activePreset = PRESETS.find((p) => p.cols === opts.cols && p.colors === opts.colors);
@@ -186,6 +200,13 @@ export default function App() {
               <strong>JPG, PNG, WEBP</strong>
             </span>
           )}
+        </div>
+
+        <div className="reco">
+          <button type="button" className="btn reco-btn" disabled={!hasImage} onClick={recommend}>
+            ✨ המלצת הגדרות
+          </button>
+          {recTip && <span className="reco-tip">{recTip}</span>}
         </div>
 
         <div className="presets" role="group" aria-label="רמת קושי">

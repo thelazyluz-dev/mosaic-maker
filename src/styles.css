@@ -104,11 +104,31 @@ header p {
   border: 1px solid var(--line);
 }
 
+.reco {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.reco-btn {
+  font-size: 15px;
+  padding: 9px 16px;
+}
+
+.reco-tip {
+  flex: 1 1 240px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
 .presets {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 16px 0 6px;
+  margin: 12px 0 6px;
 }
 
 .chip {
