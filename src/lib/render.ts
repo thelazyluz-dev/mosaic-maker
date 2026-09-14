@@ -1,5 +1,6 @@
 import type { Mosaic, RGB } from './mosaic';
 import type { Split, SplitType } from './halfcells';
+import { regionData } from './regions';
 
 type RenderMosaic = Mosaic & { splits?: (Split | null)[] };
 
@@ -95,40 +96,70 @@ function gridLines(cols: number, rows: number): string {
   );
 }
 
-export function puzzleSvg(m: RenderMosaic): string {
+export function puzzleSvg(
+  m: RenderMosaic,
+  opts: { regionNumbers?: boolean; outlines?: boolean } = {},
+): string {
   const fs = 0.56;
   const fss = 0.42; // smaller digits for the two halves of a split cell
   const splits = m.splits;
+  const rd = opts.regionNumbers || opts.outlines ? regionData(m) : null;
   const parts: string[] = [open(m)];
   parts.push(`<rect width="${m.cols}" height="${m.rows}" fill="#ffffff"/>`);
+
+  // divider lines for split cells — shown in every mode when half-cells are on
   const seps: string[] = [];
+  if (splits) {
+    for (let i = 0; i < splits.length; i++) {
+      const s = splits[i];
+      if (!s) continue;
+      const x = i % m.cols;
+      const y = (i / m.cols) | 0;
+      const [x1, y1, x2, y2] = SEPARATOR[s.type];
+      seps.push(`M${x + x1} ${y + y1}L${x + x2} ${y + y2}`);
+    }
+  }
+
   parts.push(
     `<g font-family="Heebo, Arial, sans-serif" font-size="${fs}" text-anchor="middle" fill="#3C4855">`,
   );
-  for (let y = 0; y < m.rows; y++) {
-    for (let x = 0; x < m.cols; x++) {
-      const i = y * m.cols + x;
-      const s = splits?.[i];
-      if (!s) {
-        const n = m.grid[i] + 1;
-        parts.push(`<text x="${x + 0.5}" y="${(y + 0.5 + fs * 0.35).toFixed(2)}">${n}</text>`);
-        continue;
+  if (opts.regionNumbers && rd) {
+    // one number per connected colour region, at its most interior cell
+    for (const L of rd.labels) {
+      parts.push(
+        `<text x="${L.x.toFixed(2)}" y="${(L.y + L.fs * 0.35).toFixed(2)}" ` +
+          `font-size="${L.fs.toFixed(2)}">${L.color + 1}</text>`,
+      );
+    }
+  } else {
+    for (let y = 0; y < m.rows; y++) {
+      for (let x = 0; x < m.cols; x++) {
+        const i = y * m.cols + x;
+        const s = splits?.[i];
+        if (!s) {
+          parts.push(
+            `<text x="${x + 0.5}" y="${(y + 0.5 + fs * 0.35).toFixed(2)}">${m.grid[i] + 1}</text>`,
+          );
+          continue;
+        }
+        const c = CENTROID[s.type];
+        parts.push(
+          `<text x="${(x + c.a[0]).toFixed(2)}" y="${(y + c.a[1] + fss * 0.35).toFixed(2)}" ` +
+            `font-size="${fss}">${m.grid[i] + 1}</text>`,
+        );
+        parts.push(
+          `<text x="${(x + c.b[0]).toFixed(2)}" y="${(y + c.b[1] + fss * 0.35).toFixed(2)}" ` +
+            `font-size="${fss}">${s.b + 1}</text>`,
+        );
       }
-      const c = CENTROID[s.type];
-      const [x1, y1, x2, y2] = SEPARATOR[s.type];
-      seps.push(`M${x + x1} ${y + y1}L${x + x2} ${y + y2}`);
-      parts.push(
-        `<text x="${(x + c.a[0]).toFixed(2)}" y="${(y + c.a[1] + fss * 0.35).toFixed(2)}" ` +
-          `font-size="${fss}">${m.grid[i] + 1}</text>`,
-      );
-      parts.push(
-        `<text x="${(x + c.b[0]).toFixed(2)}" y="${(y + c.b[1] + fss * 0.35).toFixed(2)}" ` +
-          `font-size="${fss}">${s.b + 1}</text>`,
-      );
     }
   }
   parts.push('</g>');
+
   parts.push(gridLines(m.cols, m.rows));
+  if (opts.outlines && rd) {
+    parts.push(`<path d="${rd.outline}" stroke="#16202B" stroke-width="0.07" fill="none"/>`);
+  }
   if (seps.length) {
     parts.push(`<path d="${seps.join('')}" stroke="#8C97A3" stroke-width="0.05" fill="none"/>`);
   }

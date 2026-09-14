@@ -51,6 +51,10 @@ export default function App() {
   const [smoothEdges, setSmoothEdges] = useState(false);
   const smoothEdgesRef = useRef(false);
 
+  // puzzle-sheet style — render-only, no recompute needed (both off by default)
+  const [regionNumbers, setRegionNumbers] = useState(false);
+  const [outlines, setOutlines] = useState(false);
+
   const say = (text: string, isWarning = false) => {
     setNote(text);
     setWarn(isWarning);
@@ -290,6 +294,22 @@ export default function App() {
             <label>
               <input
                 type="checkbox"
+                checked={regionNumbers}
+                onChange={(e) => setRegionNumbers(e.target.checked)}
+              />
+              מספר אחד לכל אזור
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={outlines}
+                onChange={(e) => setOutlines(e.target.checked)}
+              />
+              קווי מתאר לאזורים
+            </label>
+            <label>
+              <input
+                type="checkbox"
                 checked={withSolution}
                 onChange={(e) => setWithSolution(e.target.checked)}
               />
@@ -322,7 +342,11 @@ export default function App() {
 
       {mosaic && (
         <>
-          <Sheet title="דף צביעה — צבעו כל משבצת לפי המספר" svg={puzzleSvg(mosaic)} mosaic={mosaic} />
+          <Sheet
+            title="דף צביעה — צבעו כל משבצת לפי המספר"
+            svg={puzzleSvg(mosaic, { regionNumbers, outlines })}
+            mosaic={mosaic}
+          />
           {withSolution && <Sheet title="פתרון" svg={solutionSvg(mosaic)} />}
         </>
       )}
